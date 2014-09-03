@@ -45,23 +45,40 @@ PEER_MESSAGE_IDS = [
     'port',
 ]
 
+#TODO(jens) make this configurable
+DATA_PROVIDER = 'cghub.ucsc.edu'
+TRACKER = 'https://dream.annailabs.com:21111/tracker.php/announce'
+
+
 def get_auth_token(credential_file):
-    # TODO(hammer): handle URLs and files
+    if os.path.isfile(credential_file):
+        return open(credential_file).read()
+
     r = requests.get(credential_file)
     auth_token = r.content
     return auth_token
 
 def get_gto_dict(content_specifier, auth_token):
-    # TODO(hammer): handle non-URIs
     payload = {'token': auth_token}
-    r = requests.post(content_specifier, data=payload)
-    gto_dict = bencode.bdecode(r.content)
+    if content_specifier.startswith('http'):
+        r = requests.post(content_specifier, data=payload)
+        content = r.content
+    else:
+        # not a url
+        if os.path.isfile(content_specifier):
+            content = open(content_specifier, 'rb').read()
+    gto_dict = bencode.bdecode(content)
     return gto_dict
 
 def get_cert_sign_url(content_specifier):
     # TODO(hammer): handle exceptions
     url_marker = '/cghub/data/'
-    return content_specifier.split(url_marker)[0] + url_marker + GT_CERT_SIGN_TAIL
+
+    if content_specifier.startswith('http'):
+        base_url =  content_specifier.split(url_marker)[0]
+    else:
+        base_url = DATA_PROVIDER
+    return base_url + url_marker + GT_CERT_SIGN_TAIL
 
 def get_info_hash(gto_dict):
     return hashlib.sha1(bencode.bencode(gto_dict.get('info')))
@@ -121,7 +138,7 @@ def make_tracker_request(gto_dict, peer_id, info_hash, key_file, crt_file):
         'supportcrypto': 1,
         'event': 'started',
     }
-    url = 'https://dream.annailabs.com:21111/tracker.php/announce'
+    url = TRACKER
     url += '?info_hash=' + urllib.parse.quote(info_hash.digest(), '') + '&'
     url += urllib.parse.urlencode(payload)
     r = requests.get(url, verify=False, cert=(crt_file, key_file))
